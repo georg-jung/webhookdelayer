@@ -1,8 +1,4 @@
-﻿using System.Diagnostics;
-using System.Net;
-using System.Net.Http.Headers;
-
-namespace WebhookDelayer;
+﻿namespace WebhookDelayer;
 
 public sealed class WebhookExecutor : IHostedService, IDisposable
 {
