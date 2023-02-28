@@ -12,7 +12,7 @@ async Task<string> OnReq(HttpRequest req) {
     return "OK";
 }
 
-app.MapGet("/{*}", OnReq);
-app.MapPost("/{*}", OnReq);
+app.MapGet("/{*req}", OnReq);
+app.MapPost("/{*req}", OnReq);
 
 app.Run();
