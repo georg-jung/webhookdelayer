@@ -1,13 +1,15 @@
-﻿namespace WebhookDelayer;
+namespace WebhookDelayer;
 
 public sealed class WebhookExecutor : IHostedService, IDisposable
 {
     private readonly CancellationTokenSource cts = new();
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<WebhookExecutor> _logger;
 
-    public WebhookExecutor(IHttpClientFactory httpClientFactory)
+    public WebhookExecutor(IHttpClientFactory httpClientFactory, ILogger<WebhookExecutor> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     public void Dispose()
@@ -22,7 +24,7 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
         var hookTarget = Environment.GetEnvironmentVariable(WebhookTarget)
             ?? throw new InvalidOperationException($"{WebhookTarget} not set.");
         var delayStr = Environment.GetEnvironmentVariable(WebhookDelay);
-        var parsed = Int32.TryParse(delayStr, out var delay);
+        var parsed = int.TryParse(delayStr, out var delay);
         if (!parsed) throw new InvalidOperationException($"{WebhookDelay} not set.");
 
         Task.Run(async () =>
@@ -35,6 +37,7 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
                 // Wait for <delay> msec if another request comes in.
                 // If yes, use the newer one and skip this one.
                 await Task.Delay(delay);
+                _logger.LogInformation("Request skipped due to newer request in queue.");
                 if (r.Count > 0) continue;
 
                 using var hc = _httpClientFactory.CreateClient();
@@ -45,7 +48,14 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
                     req.Headers.Add(k, (IEnumerable<string>)v);
                 }
 
-                var rx = await hc.SendAsync(req, cancellationToken);
+                try
+                {
+                    var rx = await hc.SendAsync(req, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error while sending webhook");
+                }
             }
         }, cancellationToken);
 

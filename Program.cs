@@ -1,6 +1,7 @@
 using WebhookDelayer;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddLogging();
 builder.Services.AddHttpClient();
 builder.Services.AddHostedService<WebhookExecutor>();
 var app = builder.Build();
