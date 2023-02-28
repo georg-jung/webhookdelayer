@@ -1,17 +1,15 @@
-﻿using System.Diagnostics;
-using System.Net;
-using System.Net.Http.Headers;
-
 namespace WebhookDelayer;
 
 public sealed class WebhookExecutor : IHostedService, IDisposable
 {
     private readonly CancellationTokenSource cts = new();
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<WebhookExecutor> _logger;
 
-    public WebhookExecutor(IHttpClientFactory httpClientFactory)
+    public WebhookExecutor(IHttpClientFactory httpClientFactory, ILogger<WebhookExecutor> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     public void Dispose()
@@ -26,7 +24,7 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
         var hookTarget = Environment.GetEnvironmentVariable(WebhookTarget)
             ?? throw new InvalidOperationException($"{WebhookTarget} not set.");
         var delayStr = Environment.GetEnvironmentVariable(WebhookDelay);
-        var parsed = Int32.TryParse(delayStr, out var delay);
+        var parsed = int.TryParse(delayStr, out var delay);
         if (!parsed) throw new InvalidOperationException($"{WebhookDelay} not set.");
 
         Task.Run(async () =>
@@ -34,22 +32,38 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
             var r = WebhookChannel.Instance.Reader;
             while (!cancellationToken.IsCancellationRequested)
             {
-                var headers = await r.ReadAsync(cancellationToken);
+                var (timestamp, headers) = await r.ReadAsync(cancellationToken);
 
                 // Wait for <delay> msec if another request comes in.
                 // If yes, use the newer one and skip this one.
-                await Task.Delay(delay);
-                if (r.Count > 0) continue;
-
-                using var hc = _httpClientFactory.CreateClient();
-                var req = new HttpRequestMessage(HttpMethod.Get, hookTarget);
-                foreach (var (k, v) in headers)
+                await Task.Delay((int)Math.Max(0, delay - (DateTimeOffset.Now - timestamp).TotalMilliseconds));
+                if (r.Count > 0)
                 {
-                    if ("Host".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
-                    req.Headers.Add(k, (IEnumerable<string>)v);
+                    _logger.LogInformation("Request skipped due to newer request in queue.");
+                    continue;
                 }
 
-                var rx = await hc.SendAsync(req, cancellationToken);
+                try
+                {
+                    using var hc = _httpClientFactory.CreateClient();
+                    var req = new HttpRequestMessage(HttpMethod.Get, hookTarget);
+                    foreach (var (k, v) in headers)
+                    {
+                        if ("Host".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        // these are not supported for GET requests and we rewrite POST to GET
+                        if ("Content-Type".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+                        if ("Content-Length".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        req.Headers.Add(k, (IEnumerable<string>)v);
+                    }
+
+                    var rx = await hc.SendAsync(req, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error while sending webhook");
+                }
             }
         }, cancellationToken);
 
