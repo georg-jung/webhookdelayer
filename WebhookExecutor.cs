@@ -43,16 +43,21 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
                     continue;
                 }
 
-                using var hc = _httpClientFactory.CreateClient();
-                var req = new HttpRequestMessage(HttpMethod.Get, hookTarget);
-                foreach (var (k, v) in headers)
-                {
-                    if ("Host".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
-                    req.Headers.Add(k, (IEnumerable<string>)v);
-                }
-
                 try
                 {
+                    using var hc = _httpClientFactory.CreateClient();
+                    var req = new HttpRequestMessage(HttpMethod.Get, hookTarget);
+                    foreach (var (k, v) in headers)
+                    {
+                        if ("Host".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        // these are not supported for GET requests and we rewrite POST to GET
+                        if ("Content-Type".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+                        if ("Content-Length".Equals(k, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        req.Headers.Add(k, (IEnumerable<string>)v);
+                    }
+
                     var rx = await hc.SendAsync(req, cancellationToken);
                 }
                 catch (Exception ex)
