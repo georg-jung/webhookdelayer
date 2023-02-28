@@ -8,8 +8,12 @@ var app = builder.Build();
 
 var writer = WebhookChannel.Instance.Writer;
 
-async Task<string> OnReq(HttpRequest req) {
-    await writer.WriteAsync(req.Headers);
+async Task<string> OnReq(HttpRequest req, ILoggerFactory logFac) {
+    var log = logFac.CreateLogger(nameof(OnReq));
+
+    // We need to create a copy of the header dictionary to avoid intermittent disposal
+    await writer.WriteAsync((DateTimeOffset.Now, req.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)));
+    log.LogInformation("Handled incoming webhook");
     return "OK";
 }
 

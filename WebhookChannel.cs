@@ -1,10 +1,11 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
+using Microsoft.Extensions.Primitives;
 
 namespace WebhookDelayer;
 
 public static class WebhookChannel
 {
-    public static Channel<IHeaderDictionary> Instance = Channel.CreateBounded<IHeaderDictionary>(new BoundedChannelOptions(1)
+    public static Channel<(DateTimeOffset Timestamp, IDictionary<string, StringValues> Headers)> Instance = Channel.CreateBounded<(DateTimeOffset, IDictionary<string, StringValues>)>(new BoundedChannelOptions(1)
     {
         FullMode = BoundedChannelFullMode.DropOldest,
     });

@@ -32,13 +32,16 @@ public sealed class WebhookExecutor : IHostedService, IDisposable
             var r = WebhookChannel.Instance.Reader;
             while (!cancellationToken.IsCancellationRequested)
             {
-                var headers = await r.ReadAsync(cancellationToken);
+                var (timestamp, headers) = await r.ReadAsync(cancellationToken);
 
                 // Wait for <delay> msec if another request comes in.
                 // If yes, use the newer one and skip this one.
-                await Task.Delay(delay);
-                _logger.LogInformation("Request skipped due to newer request in queue.");
-                if (r.Count > 0) continue;
+                await Task.Delay((int)Math.Max(0, delay - (DateTimeOffset.Now - timestamp).TotalMilliseconds));
+                if (r.Count > 0)
+                {
+                    _logger.LogInformation("Request skipped due to newer request in queue.");
+                    continue;
+                }
 
                 using var hc = _httpClientFactory.CreateClient();
                 var req = new HttpRequestMessage(HttpMethod.Get, hookTarget);
